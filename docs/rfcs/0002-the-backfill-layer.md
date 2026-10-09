@@ -4,7 +4,7 @@
 - **Status:** Draft, proposed interfaces and amendments, not an implementation claim
 - **Author:** Pete (Petko Pavlovski)
 - **Date:** 2026-09-26
-- **Repo:** github.com/nightswatchhq/the-legacy
+- **Repo:** github.com/nuthatch-org/the-legacy
 - **Depends on:** [RFC-0001](0001-the-legacy.md), normative except where amendments in §8 are adopted
 
 ## 1. Abstract
@@ -372,7 +372,7 @@ ideal duplicate-work reductions, not guaranteed bill savings for dissimilar filt
 
 ### P7. Operating a public mirror
 
-Night's Watch proposes a public reference mirror per silo on R2, listed with other mirrors in
+Nuthatch proposes a public reference mirror per silo on R2, listed with other mirrors in
 the registry. It has no privileged cryptographic status; trusted checkpoints remain separate.
 Current [R2 Standard pricing](https://developers.cloudflare.com/r2/pricing/) lists $0.015/GB-month,
 $0.36/million Class B reads and no egress charge. Hosting still incurs operations, storage and

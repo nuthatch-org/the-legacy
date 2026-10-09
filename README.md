@@ -4,7 +4,7 @@
 > An open, verifiable, mirrorable history corpus for EVM chains, and a thin Rust binary that serves
 > it.
 
-[![ci](https://github.com/nightswatchhq/the-legacy/actions/workflows/ci.yml/badge.svg)](https://github.com/nightswatchhq/the-legacy/actions/workflows/ci.yml)
+[![ci](https://github.com/nuthatch-org/the-legacy/actions/workflows/ci.yml/badge.svg)](https://github.com/nuthatch-org/the-legacy/actions/workflows/ci.yml)
 
 EIP-4444 makes historical execution data a second-class citizen of the base protocol at exactly the
 moment demand for it is climbing. The existing answers are each half of one: era1 and Portal are
