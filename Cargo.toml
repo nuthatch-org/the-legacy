@@ -9,7 +9,7 @@ edition = "2021"
 # claim. Lowering it needs a green `cargo test` + `cargo clippy` on the lower toolchain, not a guess.
 rust-version = "1.98"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/nightswatchhq/the-legacy"
+repository = "https://github.com/nuthatch-org/the-legacy"
 authors = ["Petko Pavlovski"]
 
 [workspace.dependencies]

@@ -4,7 +4,7 @@
 - **Status:** Draft
 - **Author:** Pete (Petko Pavlovski)
 - **Date:** 2026-09-14
-- **Repo:** github.com/nightswatchhq/the-legacy
+- **Repo:** github.com/nuthatch-org/the-legacy
 
 **Follow-up:** [RFC-0002](0002-the-backfill-layer.md) proposes sealed-only serving, a native
 reader, transaction sidecars, cost-bounded ingestion and a re-sequenced roadmap. Its proposed
@@ -1295,7 +1295,7 @@ All figures are **design targets, not measurements**, with reasoning stated:
 
 ---
 
-*Prepared by Pete (Petko Pavlovski) for publication as RFC-0001 in `nightswatchhq/the-legacy`. Every
+*Prepared by Pete (Petko Pavlovski) for publication as RFC-0001 in `nuthatch-org/the-legacy`. Every
 format and protocol fact above is drawn from the primary sources listed in §20; every quantitative
 projection is labeled an estimate or a design target; and the two verification gaps that matter -
 traces are not header-committed, and L2 corpora are much larger than mainnet - are stated without
