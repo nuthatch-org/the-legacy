@@ -10,6 +10,11 @@
 >    `withdrawalsRoot` and no withdrawals. The first withdrawal, global index 0, is in block
 >    17,034,871, as served by GraphOps and journaled on 2026-11-05.
 > 3. The org is `nuthatch-org`, not `nightswatchhq`.
+> 4. §12.3's statement 1 does not refuse. Burrmill's checked-arithmetic rule follows DuckDB: SUM
+>    skips a row whose `_dec` cast came back NULL and refuses only when the total itself does not
+>    fit, while MIN, MAX and the other aggregates refuse at the first dropped row. `u256_dec`
+>    behaves exactly as a nest's `_dec`. The refusal is shown with MAX, and SUM's skipping is
+>    stated as what it is, which is the reason statement 2 counts the unrepresentable rows.
 
 ## 1. Status and placement
 
@@ -634,8 +639,9 @@ WHERE address = X'ae7ab96520de3a18e5e111b5eaab095312d7fe84'
   AND block_number BETWEEN 17031168 AND 17039359;
 ```
 
-The point made in the post: statement 1 refuses; statement 2 says how many rows could not be
-represented and sums the rest exactly. The claim is about Burrmill's own behaviour. No claim is made
+The point made in the post (amended, see note 4): `MAX(u256_dec(...))` over the same rows refuses;
+a plain SUM skips the unrepresentable rows silently, as DuckDB does, so statement 2 counts them and
+sums the rest exactly. The claim is about Burrmill's own behaviour. No claim is made
 about what DuckDB or any other engine returns on the same input unless it is run and transcribed in
 the same post. (The FILTER clause is used if Burrmill's dialect admits it; otherwise statement 2 is
 written as a CASE form, which it certainly admits.)
