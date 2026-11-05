@@ -737,7 +737,10 @@ Order of commits in the-legacy: `pete/rpc-journal`, `pete/rpc-envelopes`, `pete/
   detached, under RFC-0001 §8.4.1.
 - [ ] Whether producer signatures are added for the first publication, and with which key.
   Proposed: not yet.
-- [ ] Bucket: R2 under Nixum Ltd or under a nuthatch-org account. Operational; decide before M4.
+- [x] Bucket: decided 2026-11-05, the existing public `nestsss` bucket under the `legacy/` prefix.
+  Relic 2079 and `registry.json` are at
+  `https://pub-bc282d5016f242a783a6c28cbcd4401a.r2.dev/legacy/v1/1/`, also as the `relic-2079`
+  pre-release on nuthatch-org/the-legacy.
 - [ ] Does Burrmill's relics feature live in `crates/burrmill` behind a feature or in a new
   `crates/burrmill-relics`? Proposed: a feature, revisited if RFC-0045's footprint gate objects.
 - [ ] Whether legacy-reader should grow an Arrow RecordBatch surface so Burrmill does not reparse
