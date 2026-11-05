@@ -1,0 +1,12 @@
+relic       2079  (002079)
+blocks      17031168..=17039359
+chain       1
+pact root   a904d6d7821cf9faa4ce008c6d01bf49b5f9d376aa370169778fc6cb9c718115
+directory   ~/legacy-run/relics/1/002079
+wrote       headers, transactions, receipts, logs, withdrawals
+rows        1316626 transactions, 71741 withdrawals
+requests    2 method attempts in 2 HTTP exchanges; 0 blocks fetched, 8192 already journaled
+estimate    40 CU by the profile's price, not an invoice
+shadow      served block hash equals the rebuilt header hash; every transaction envelope rebuilt from fields hashes to its served hash; recovered sender equals served `from`; served gasUsed, contractAddress, effectiveGasPrice and logIndex equal the derived values; transaction, receipt and withdrawal roots, blooms and gas accounting per block
+NOT checked signature fork rules, fee derivation for blob gas (kept as served), uncle headers beyond an empty-list check, canonical-chain membership, checkpoint anchor
+note        these are the Shadow's checks on its input; `solo clean --files` is the claim about the files

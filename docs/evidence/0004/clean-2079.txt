@@ -1,0 +1,35 @@
+1 relic(s), blocks 17031168..=17039359, chain 1
+pact root   a904d6d7821cf9faa4ce008c6d01bf49b5f9d376aa370169778fc6cb9c718115
+checked     manifest structure, relic linkage, pact chain
+NOT checked pact anchor: relic 2079 declares a detached pact start; its link to genesis is not established
+checked     local file sizes, BLAKE3 hashes, Parquet footer counts
+checked     complete header coverage, stored parent links, manifest boundaries
+table       relic 2079 headers.parquet: schema/rows/content hash/block bounds: pass
+table       relic 2079 transactions.parquet: schema/rows/content hash/block bounds: pass
+table       relic 2079 receipts.parquet: schema/rows/content hash/block bounds: pass
+table       relic 2079 logs.parquet: schema/rows/content hash/block bounds: pass
+table       relic 2079 withdrawals.parquet: schema/rows/content hash/block bounds: pass
+header hashes/linkage: pass (Ethereum layout through Prague; requested files only)
+NOT checked consensus rules/fork schedule, other table completeness, checkpoint anchor, producer signatures
+transaction trie roots: pass
+relic 2079 transaction trie roots: pass
+NOT checked transaction field RLP semantics, raw/structured agreement, signatures or sender recovery
+transaction/receipt links: pass
+log/transaction links: pass
+log/receipt links: pass
+relic 2079 links: transaction/receipt pass; log/transaction pass; log/receipt pass
+receipt blooms: pass
+relic 2079 receipt blooms: pass
+header blooms: pass
+relic 2079 header blooms: pass
+receipt gas accounting: pass
+relic 2079 receipt gas accounting: pass
+receipt trie roots: pass
+relic 2079 receipt trie roots: pass
+withdrawal trie roots: pass
+relic 2079 withdrawal trie roots: pass
+NOT checked receipt fees or other derived fields
+era1 accumulator: not checked (manifest has no era1_accumulator_root)
+relic 2079 era1 accumulator: not checked (manifest has no era1_accumulator_root)
+NOT checked finality, index sidecars
+scope       requested manifests only; --after supplies predecessor context, not verified file coverage

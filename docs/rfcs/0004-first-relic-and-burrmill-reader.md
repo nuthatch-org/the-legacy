@@ -14,7 +14,9 @@
 >    skips a row whose `_dec` cast came back NULL and refuses only when the total itself does not
 >    fit, while MIN, MAX and the other aggregates refuse at the first dropped row. `u256_dec`
 >    behaves exactly as a nest's `_dec`. The refusal is shown with MAX, and SUM's skipping is
->    stated as what it is, which is the reason statement 2 counts the unrepresentable rows.
+>    stated as what it is, which is the reason statement 2 counts the unrepresentable rows. A SUM over
+>    a CASE that yields `u256_dec` only for representable rows is refused as well, so statement 2 is
+>    written with the filter in WHERE (`docs/evidence/0004/sql/3c-*.sql`), which Burrmill admits.
 
 ## 1. Status and placement
 

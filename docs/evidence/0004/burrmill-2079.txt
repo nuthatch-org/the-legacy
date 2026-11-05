@@ -1,0 +1,87 @@
+-- opened ~/legacy-run/relics/1/002079 in 0.81s
+
+-- ~/legacy-run/evidence/sql/1b-first-blocks.sql
+SELECT block_number, COUNT(*) AS withdrawals, SUM(amount) AS gwei
+FROM withdrawals
+WHERE block_number BETWEEN 17034870 AND 17034880
+GROUP BY block_number
+ORDER BY block_number;
++--------------+-------------+-------------+
+| block_number | withdrawals | gwei        |
++--------------+-------------+-------------+
+| 17034871     | 3           | 13440024688 |
+| 17034872     | 3           | 41770604990 |
+| 17034874     | 2           | 7513499536  |
+| 17034875     | 5           | 19503197466 |
+| 17034877     | 16          | 52452405855 |
+| 17034878     | 16          | 50540901953 |
+| 17034879     | 16          | 51281802091 |
+| 17034880     | 16          | 51885478712 |
++--------------+-------------+-------------+
+-- ok in 0.01s
+
+-- ~/legacy-run/evidence/sql/1-withdrawals.sql
+SELECT COUNT(*)          AS withdrawals,
+       SUM(amount)       AS gwei_total,
+       MIN(block_number) AS first_block,
+       MIN("index")      AS first_index
+FROM withdrawals
+WHERE block_number BETWEEN 17031168 AND 17039359;
++-------------+-----------------+-------------+-------------+
+| withdrawals | gwei_total      | first_block | first_index |
++-------------+-----------------+-------------+-------------+
+| 71741       | 164033360583271 | 17034871    | 0           |
++-------------+-----------------+-------------+-------------+
+-- ok in 0.00s
+
+-- ~/legacy-run/evidence/sql/2-steth-transfers.sql
+SELECT COUNT(*)                                                         AS transfers,
+       SUM(u256_dec(word(data, 0)))                                     AS wei_total,
+       SUM(CASE WHEN u256_dec(word(data, 0)) IS NULL THEN 1 ELSE 0 END) AS overflow_rows
+FROM logs
+WHERE address = X'ae7ab96520de3a18e5e111b5eaab095312d7fe84'
+  AND topic0  = X'ddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
+  AND block_number BETWEEN 17031168 AND 17039359;
++-----------+--------------------------+---------------+
+| transfers | wei_total                | overflow_rows |
++-----------+--------------------------+---------------+
+| 3583      | 357694982623416858516730 | 0             |
++-----------+--------------------------+---------------+
+-- ok in 0.09s
+
+-- ~/legacy-run/evidence/sql/3a-steth-approvals-max.sql
+SELECT MAX(u256_dec(word(data, 0))) AS largest_approval
+FROM logs
+WHERE address = X'ae7ab96520de3a18e5e111b5eaab095312d7fe84'
+  AND topic0  = X'8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925'
+  AND block_number BETWEEN 17031168 AND 17039359;
+-- refused in 0.06s: substrate error: Execution error: max over a TRY_CAST value: a value did not fit and would be left out, so it is refused
+
+-- ~/legacy-run/evidence/sql/3b-steth-approvals-counted.sql
+SELECT SUM(CASE WHEN u256_dec(word(data, 0)) IS NULL THEN 1 ELSE 0 END) AS unlimited_or_oversized,
+       COUNT(*) AS approvals
+FROM logs
+WHERE address = X'ae7ab96520de3a18e5e111b5eaab095312d7fe84'
+  AND topic0  = X'8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925'
+  AND block_number BETWEEN 17031168 AND 17039359;
++------------------------+-----------+
+| unlimited_or_oversized | approvals |
++------------------------+-----------+
+| 918                    | 2121      |
++------------------------+-----------+
+-- ok in 0.09s
+
+-- ~/legacy-run/evidence/sql/3c-steth-approvals-representable.sql
+SELECT COUNT(*)                     AS representable,
+       SUM(u256_dec(word(data, 0))) AS representable_total
+FROM logs
+WHERE address = X'ae7ab96520de3a18e5e111b5eaab095312d7fe84'
+  AND topic0  = X'8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925'
+  AND block_number BETWEEN 17031168 AND 17039359
+  AND u256_dec(word(data, 0)) IS NOT NULL;
++---------------+---------------------------------+
+| representable | representable_total             |
++---------------+---------------------------------+
+| 1203          | 2081441552082179885036310733796 |
++---------------+---------------------------------+
+-- ok in 0.09s

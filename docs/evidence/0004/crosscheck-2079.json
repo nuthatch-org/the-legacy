@@ -1,0 +1,22 @@
+{
+ "1-withdrawals": {
+  "withdrawals": 71741,
+  "gwei_total": 164033360583271,
+  "first_block": 17034871,
+  "first_index": 0
+ },
+ "2-steth-transfers": {
+  "transfers": 3583,
+  "wei_total": 357694982623416858516730,
+  "overflow_rows": 0
+ },
+ "3-steth-approvals": {
+  "unlimited_or_oversized": 918,
+  "representable": 1203,
+  "representable_total": 2081441552082179885036310733796,
+  "largest_representable": 999999999999000000000000000000
+ },
+ "rpc_calls": 8210,
+ "seconds": 108.3,
+ "provider": "the endpoint given on the command line; the same one the Shadow used"
+}
