@@ -17,6 +17,14 @@
 >    stated as what it is, which is the reason statement 2 counts the unrepresentable rows. A SUM over
 >    a CASE that yields `u256_dec` only for representable rows is refused as well, so statement 2 is
 >    written with the filter in WHERE (`docs/evidence/0004/sql/3c-*.sql`), which Burrmill admits.
+> 5. §6.2's oracle cannot be relic 209 against GraphOps. Before Byzantium (block 4,370,000) a receipt
+>    commits to a 32-byte post-state root; GraphOps serves a `status` and no `root`, so the receipt
+>    trie cannot be rebuilt and the Shadow now stops at once with that reason. The oracle is relic
+>    1800 instead (14,745,600 to 14,753,791, May 2022), which also puts type 1 and 2 envelopes
+>    through the era1 path. GraphOps serves no pre-merge `totalDifficulty` either; the Shadow derives
+>    it as a running sum of header difficulties from `--total-difficulty-base`, the one value not
+>    header-committed, taken for the oracle from the era1 relic's first header and recorded in
+>    provenance.
 
 ## 1. Status and placement
 

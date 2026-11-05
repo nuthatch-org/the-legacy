@@ -26,6 +26,9 @@ pub struct Rows {
     pub withdrawals: Option<Vec<WithdrawalRow>>,
 }
 
+/// Chain ID 1 Byzantium activation; receipts before it carry a state root, not a status.
+const BYZANTIUM: u64 = 4_370_000;
+
 const EMPTY_OMMERS: [u8; 32] = [
     0x1d, 0xcc, 0x4d, 0xe8, 0xde, 0xc7, 0x5d, 0x7a, 0xab, 0x85, 0xb5, 0x67, 0xb6, 0xcc, 0xd4, 0x1a,
     0xd3, 0x12, 0x45, 0x1b, 0x94, 0x8a, 0x74, 0x13, 0xf0, 0xa1, 0x42, 0xfd, 0x40, 0xd4, 0x93, 0x47,
@@ -64,6 +67,14 @@ pub fn rows(number: u64, journaled: &Journaled) -> Result<Rows, Error> {
     }
 
     let receipts = &journaled.receipts;
+    // Before Byzantium a receipt commits to a 32-byte post-state root. Nodes that no longer keep
+    // it serve a `status` instead, and no amount of retrying turns that into the committed bytes.
+    if number < BYZANTIUM && receipts.iter().any(|r| r.root.is_none()) {
+        return Err(Error::Probe(format!(
+            "block {number} is pre-Byzantium and the provider served receipts without the \
+             post-state `root`; it cannot reproduce chain ID 1 receipts before block {BYZANTIUM}"
+        )));
+    }
     if receipts.len() != block.transactions.len() {
         return Err(fail(format!(
             "{} receipts for {} transactions; an empty or short receipt list is a provider error",
@@ -205,22 +216,16 @@ fn header_row(number: u64, block: &wire::Block) -> Result<HeaderRow, Error> {
     }
     let difficulty = wire::quantity("difficulty", &block.difficulty)?;
     // Post-merge total difficulty is frozen and many nodes no longer serve it; RFC-0004 §8.1
-    // stores null. Pre-merge it is part of the era1 accumulator, so a missing value is refused
-    // rather than sealed as a relic that cannot agree with its era1 twin.
+    // stores null. Pre-merge a served value is kept; an absent one stays None here and the seal
+    // either derives it from --total-difficulty-base or refuses (`fill_total_difficulty`).
     let total_difficulty = if difficulty.is_empty() {
         None
     } else {
-        Some(
-            block
-                .total_difficulty
-                .as_deref()
-                .map(|t| wire::quantity("totalDifficulty", t))
-                .transpose()?
-                .ok_or_else(|| Error::Block {
-                    number,
-                    reason: "pre-merge block served without totalDifficulty".into(),
-                })?,
-        )
+        block
+            .total_difficulty
+            .as_deref()
+            .map(|t| wire::quantity("totalDifficulty", t))
+            .transpose()?
     };
     let mut row = HeaderRow {
         block_number: number,
@@ -438,8 +443,8 @@ fn receipt_rlp(receipt: &wire::Receipt) -> Result<Vec<u8>, Error> {
         Some(text) => wire::u64_of("type", text)?,
     };
     let outcome = match (&receipt.status, &receipt.root) {
-        (Some(status), _) => quantity_item("status", status)?,
-        (None, Some(root)) => bytes_item(&wire::fixed::<32>("root", root)?),
+        (_, Some(root)) => bytes_item(&wire::fixed::<32>("root", root)?),
+        (Some(status), None) => quantity_item("status", status)?,
         (None, None) => return Err(Error::Wire("receipt has neither status nor root".into())),
     };
     let cumulative = quantity_item("cumulativeGasUsed", &receipt.cumulative_gas_used)?;
@@ -465,4 +470,118 @@ fn receipt_rlp(receipt: &wire::Receipt) -> Result<Vec<u8>, Error> {
     let mut typed = vec![tx_type as u8];
     typed.extend(body);
     Ok(bytes_item(&typed))
+}
+
+/// Fill pre-merge total difficulty a provider did not serve, as the running sum of each header's
+/// own difficulty from `base`, the total difficulty of the block before the relic. Difficulties
+/// are header-committed; the base is not, and whoever supplies it is recorded in provenance.
+/// A served value must agree with the running sum, so a provider cannot be half right.
+pub fn fill_total_difficulty(
+    headers: &mut [HeaderRow],
+    base: Option<&[u8]>,
+) -> Result<bool, Error> {
+    let mut running: Option<Vec<u8>> = base.map(<[u8]>::to_vec);
+    let mut derived = false;
+    for header in headers.iter_mut() {
+        if header.difficulty.is_empty() {
+            running = None;
+            continue;
+        }
+        let next = running
+            .as_deref()
+            .map(|r| crate::decode::be_add_pub(r, &header.difficulty))
+            .transpose()
+            .map_err(|_| Error::Block {
+                number: header.block_number,
+                reason: "total difficulty overflowed uint256".into(),
+            })?;
+        match (&header.total_difficulty, next) {
+            (Some(served), Some(sum)) if *served != sum => {
+                return Err(Error::Block {
+                    number: header.block_number,
+                    reason: "served totalDifficulty disagrees with the running sum from the base"
+                        .into(),
+                })
+            }
+            (Some(served), _) => running = Some(served.clone()),
+            (None, Some(sum)) => {
+                header.total_difficulty = Some(sum.clone());
+                running = Some(sum);
+                derived = true;
+            }
+            (None, None) => {
+                return Err(Error::Block {
+                    number: header.block_number,
+                    reason: "pre-merge block served without totalDifficulty; pass \
+                             --total-difficulty-base (the total difficulty of the block before \
+                             the relic) to derive it"
+                        .into(),
+                })
+            }
+        }
+    }
+    Ok(derived)
+}
+
+#[cfg(test)]
+mod td_tests {
+    use super::*;
+
+    fn header(n: u64, difficulty: u64, td: Option<u64>) -> HeaderRow {
+        let trim = |v: u64| {
+            v.to_be_bytes()
+                .iter()
+                .copied()
+                .skip_while(|b| *b == 0)
+                .collect::<Vec<u8>>()
+        };
+        HeaderRow {
+            block_number: n,
+            block_hash: [0; 32],
+            parent_hash: [0; 32],
+            ommers_hash: [0; 32],
+            beneficiary: [0; 20],
+            state_root: [0; 32],
+            transactions_root: [0; 32],
+            receipts_root: [0; 32],
+            logs_bloom: [0; 256],
+            difficulty: trim(difficulty),
+            gas_limit: 0,
+            gas_used: 0,
+            timestamp: 0,
+            extra_data: vec![],
+            mix_hash: [0; 32],
+            nonce: [0; 8],
+            base_fee_per_gas: None,
+            withdrawals_root: None,
+            blob_gas_used: None,
+            excess_blob_gas: None,
+            parent_beacon_block_root: None,
+            requests_hash: None,
+            total_difficulty: td.map(trim),
+        }
+    }
+
+    #[test]
+    fn a_missing_total_difficulty_is_the_running_sum_from_the_base() {
+        let mut hs = vec![
+            header(10, 5, None),
+            header(11, 7, None),
+            header(12, 0, None),
+        ];
+        assert!(fill_total_difficulty(&mut hs, Some(&[100])).unwrap());
+        assert_eq!(hs[0].total_difficulty, Some(vec![105]));
+        assert_eq!(hs[1].total_difficulty, Some(vec![112]));
+        assert_eq!(hs[2].total_difficulty, None);
+    }
+
+    #[test]
+    fn without_a_base_a_missing_value_is_refused_and_a_wrong_one_always_is() {
+        let mut hs = vec![header(10, 5, None)];
+        assert!(fill_total_difficulty(&mut hs, None).is_err());
+        let mut hs = vec![header(10, 5, Some(105)), header(11, 7, Some(999))];
+        assert!(fill_total_difficulty(&mut hs, Some(&[100])).is_err());
+        let mut hs = vec![header(10, 5, Some(105)), header(11, 7, Some(112))];
+        assert!(!fill_total_difficulty(&mut hs, None).unwrap());
+    }
 }

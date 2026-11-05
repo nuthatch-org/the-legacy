@@ -140,6 +140,12 @@ enum Command {
         /// or `--out`; a later run over the same journal seals without the network.
         #[arg(long)]
         journal_only: bool,
+
+        /// `--source rpc` only: total difficulty of the block before the relic, as hex. For a
+        /// provider that serves no pre-merge `totalDifficulty`; the relic's own values are then
+        /// derived from header difficulties. The base is not header-committed.
+        #[arg(long)]
+        total_difficulty_base: Option<String>,
     },
 }
 
@@ -222,6 +228,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             rps,
             retries,
             journal_only,
+            total_difficulty_base,
         } => {
             if source == Source::Rpc {
                 let mut profile =
@@ -250,6 +257,18 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                     budget_cu,
                     retries,
                     journal_only,
+                    total_difficulty_base: total_difficulty_base
+                        .map(|t| {
+                            let digits = t.trim_start_matches("0x").trim_start_matches('0');
+                            let padded = if digits.len() % 2 == 1 {
+                                format!("0{digits}")
+                            } else {
+                                digits.to_string()
+                            };
+                            hex::decode(padded)
+                        })
+                        .transpose()
+                        .map_err(|e| format!("--total-difficulty-base: {e}"))?,
                 };
                 if journal_only {
                     let run = rpc::journal_only(&request)?;
@@ -342,6 +361,12 @@ fn report_rpc(sealed: &rpc::Sealed) {
         "requests    {} method attempts in {} HTTP exchanges; {} blocks fetched, {} already journaled",
         sealed.attempted, sealed.http_exchanges, sealed.fetched, sealed.held_before
     );
+    if sealed.derived_total_difficulty {
+        println!(
+            "derived     total_difficulty as a running sum of header difficulties from \
+             --total-difficulty-base; the base itself is not header-committed"
+        );
+    }
     if let Some(cu) = sealed.estimated_cu {
         println!("estimate    {cu} CU by the profile's price, not an invoice");
     }

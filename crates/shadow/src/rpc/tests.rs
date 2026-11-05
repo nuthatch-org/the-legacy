@@ -71,6 +71,7 @@ fn request(server: &Server, dir: &Path, profile: Profile) -> SealRequest {
         concurrency: 4,
         retries: 3,
         journal_only: false,
+        total_difficulty_base: None,
     }
 }
 

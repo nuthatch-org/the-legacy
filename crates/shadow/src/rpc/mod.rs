@@ -82,6 +82,9 @@ pub struct SealRequest {
     pub retries: u32,
     /// Fetch and journal only: no `--after`, no `--out`, nothing sealed.
     pub journal_only: bool,
+    /// Total difficulty of the block before the relic, as a minimal big-endian magnitude, for a
+    /// provider that serves no pre-merge `totalDifficulty`. Not header-committed; recorded.
+    pub total_difficulty_base: Option<Vec<u8>>,
 }
 
 /// What one run did, sealed or not.
@@ -107,6 +110,8 @@ pub struct Sealed {
     pub tables: Vec<String>,
     pub transactions: u64,
     pub withdrawals: Option<u64>,
+    /// Pre-merge total difficulty was derived from `--total-difficulty-base`, not served.
+    pub derived_total_difficulty: bool,
     pub fetched: u64,
     pub held_before: u64,
     pub attempted: u64,
@@ -279,6 +284,7 @@ fn run(request: &SealRequest) -> Result<(Run, Option<Sealed>), Error> {
         "estimated_cu": budget.estimated_cu(),
         "budget_requests": request.budget_requests,
         "budget_cu": request.budget_cu,
+        "total_difficulty_base": request.total_difficulty_base.as_deref().map(hex::encode),
     }));
     journal.write_provenance(&json!({
         "provider_alias": request.profile.provider.alias,
@@ -488,6 +494,7 @@ fn fetch_blocks(
                             let journaled = Journaled { block, receipts };
                             match block::rows(*n, &journaled) {
                                 Ok(_) => return (*n, Outcome::Done, Some(journaled)),
+                                Err(e @ Error::Probe(_)) => Outcome::Fatal(e),
                                 Err(e) => Outcome::Invalid(e.to_string()),
                             }
                         }
@@ -662,6 +669,8 @@ fn assemble(
             withdrawals.extend(list);
         }
     }
+    let derived_td =
+        block::fill_total_difficulty(&mut headers, request.total_difficulty_base.as_deref())?;
     for pair in headers.windows(2) {
         if pair[1].parent_hash != pair[0].block_hash {
             return Err(Error::Block {
@@ -728,6 +737,7 @@ fn assemble(
             .collect(),
         transactions: transactions.len() as u64,
         withdrawals: has_withdrawals.then_some(withdrawals.len() as u64),
+        derived_total_difficulty: derived_td,
         fetched: 0,
         held_before: 0,
         attempted: 0,

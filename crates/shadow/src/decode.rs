@@ -877,6 +877,11 @@ fn be_add(left: &[u8], right: &[u8]) -> Result<Vec<u8>, ()> {
     Ok(trim(&out).to_vec())
 }
 
+/// Minimal big-endian addition, for the RPC source's derived total difficulty.
+pub(crate) fn be_add_pub(left: &[u8], right: &[u8]) -> Result<Vec<u8>, ()> {
+    be_add(left, right)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
