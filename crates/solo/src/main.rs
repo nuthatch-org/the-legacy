@@ -115,6 +115,13 @@ fn clean(
     let manifests: Vec<Manifest> = paths.iter().map(|p| load(p)).collect::<Result<_, _>>()?;
 
     let head = pact::verify_chain(previous.as_ref(), &manifests)?;
+    let anchor = match pact::detached_anchor(previous.as_ref(), &manifests) {
+        Some(index) => format!(
+            "not checked (relic {index} declares a detached pact start; its link to genesis is not established)"
+        ),
+        None if previous.is_some() => "predecessor context from --after, not re-verified".into(),
+        None => "pass (anchored at the genesis relic)".into(),
+    };
     let local_report = if files {
         clean_files::check(paths, &manifests)?
     } else {
@@ -190,6 +197,7 @@ fn clean(
                 "manifest_structure": "pass",
                 "relic_linkage": "pass",
                 "pact_chain": "pass",
+                "pact_anchor": anchor,
                 "file_hashes": byte_status,
                 "file_sizes": byte_status,
                 "parquet_counts": byte_status,
@@ -241,6 +249,16 @@ fn clean(
         );
         println!("pact root   {head}");
         println!("checked     manifest structure, relic linkage, pact chain");
+        if anchor.starts_with("not checked") {
+            println!(
+                "NOT checked pact anchor: {}",
+                anchor
+                    .trim_start_matches("not checked (")
+                    .trim_end_matches(')')
+            );
+        } else {
+            println!("pact anchor {anchor}");
+        }
         if files {
             println!("checked     local file sizes, BLAKE3 hashes, Parquet footer counts");
             println!(

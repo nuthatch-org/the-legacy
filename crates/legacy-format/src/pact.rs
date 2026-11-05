@@ -41,10 +41,12 @@ pub fn extend(prev: Option<&Manifest>, next: &mut Manifest) -> Result<Hash32, Er
     match prev {
         None => {
             let index = next.relic_index();
-            if index != 0 {
+            if index != 0 && !next.detached_pact_start {
                 return Err(Error::Pact {
                     index,
-                    reason: "no predecessor given, but this is not the genesis relic".into(),
+                    reason: "no predecessor given, but this is not the genesis relic and does not \
+                             declare detached_pact_start"
+                        .into(),
                 });
             }
             next.prev_relic_manifest_hash = Hash32::ZERO;
@@ -52,6 +54,12 @@ pub fn extend(prev: Option<&Manifest>, next: &mut Manifest) -> Result<Hash32, Er
             next.pact_root = h;
         }
         Some(prev) => {
+            if next.detached_pact_start {
+                return Err(Error::Pact {
+                    index: next.relic_index(),
+                    reason: "declares detached_pact_start but was given a predecessor".into(),
+                });
+            }
             check_link(prev, next)?;
             next.prev_relic_manifest_hash = prev.manifest_hash()?;
             let h = next.manifest_hash()?;
@@ -82,10 +90,21 @@ pub fn verify_chain(prev: Option<&Manifest>, manifests: &[Manifest]) -> Result<H
         let index = m.relic_index();
         m.validate()?;
 
-        if i == 0 && anchored_at_genesis && index != 0 {
+        // A detached start may only open a run that has no predecessor. Anywhere else it would
+        // let a mirror cut a chain in two and present the second half as a fresh segment.
+        if m.detached_pact_start && !(i == 0 && anchored_at_genesis) {
             return Err(Error::Pact {
                 index,
-                reason: "verified without a predecessor, but this is not the genesis relic".into(),
+                reason: "detached_pact_start is only valid on the first relic of an unanchored run"
+                    .into(),
+            });
+        }
+        if i == 0 && anchored_at_genesis && index != 0 && !m.detached_pact_start {
+            return Err(Error::Pact {
+                index,
+                reason: "verified without a predecessor, but this is not the genesis relic and \
+                         does not declare detached_pact_start"
+                    .into(),
             });
         }
 
@@ -118,6 +137,15 @@ pub fn verify_chain(prev: Option<&Manifest>, manifests: &[Manifest]) -> Result<H
     }
 
     Ok(prev_pact_root)
+}
+
+/// The relic a run's pact is anchored at: `None` for genesis, `Some(index)` for a declared
+/// detached segment, whose link to genesis nothing here establishes.
+pub fn detached_anchor(prev: Option<&Manifest>, manifests: &[Manifest]) -> Option<u64> {
+    match (prev, manifests.first()) {
+        (None, Some(first)) if first.detached_pact_start => Some(first.relic_index()),
+        _ => None,
+    }
 }
 
 /// The head root of a sealed chain, without recomputing it.
@@ -262,6 +290,62 @@ mod tests {
         let mut sealed = chain(6);
         seal_chain(None, &mut sealed).unwrap();
         assert!(verify_chain(None, &sealed[3..]).is_err());
+    }
+
+    fn detached(index: u64) -> Manifest {
+        let mut m = sample_manifest(index);
+        m.detached_pact_start = true;
+        m
+    }
+
+    #[test]
+    fn a_declared_detached_start_seals_and_verifies_like_genesis() {
+        let mut segment = vec![detached(2079)];
+        segment.extend((2080..2083).map(sample_manifest));
+        let head = seal_chain(None, &mut segment).unwrap();
+        assert_eq!(segment[0].prev_relic_manifest_hash, Hash32::ZERO);
+        assert_eq!(segment[0].pact_root, segment[0].manifest_hash().unwrap());
+        assert_eq!(verify_chain(None, &segment).unwrap(), head);
+        assert_eq!(detached_anchor(None, &segment), Some(2079));
+    }
+
+    #[test]
+    fn the_flag_is_part_of_the_manifest_hash() {
+        let mut flagged = vec![detached(2079)];
+        seal_chain(None, &mut flagged).unwrap();
+        // Strip the flag after sealing: the manifest no longer hashes to its pact root.
+        flagged[0].detached_pact_start = false;
+        assert!(verify_chain(None, &flagged).is_err());
+    }
+
+    #[test]
+    fn an_unflagged_manifest_hashes_as_it_did_before_the_field() {
+        let m = sample_manifest(3);
+        let text = String::from_utf8(m.to_canonical_bytes().unwrap()).unwrap();
+        assert!(!text.contains("detached"));
+    }
+
+    #[test]
+    fn a_detached_start_cannot_hide_mid_chain_or_take_a_predecessor() {
+        let mut ms = chain(3);
+        seal_chain(None, &mut ms).unwrap();
+        let mut next = detached(3);
+        assert!(extend(ms.last(), &mut next).is_err());
+
+        // A mirror cannot cut a sealed chain and relabel the tail as a fresh segment.
+        let mut run = vec![detached(5)];
+        seal_chain(None, &mut run).unwrap();
+        let mut tail = sample_manifest(6);
+        extend(run.last(), &mut tail).unwrap();
+        let mut forged = tail.clone();
+        forged.detached_pact_start = true;
+        assert!(verify_chain(None, &[run[0].clone(), forged]).is_err());
+        assert!(verify_chain(run.first(), &[detached(6)]).is_err());
+    }
+
+    #[test]
+    fn genesis_cannot_be_detached() {
+        assert!(detached(0).validate().is_err());
     }
 
     #[test]

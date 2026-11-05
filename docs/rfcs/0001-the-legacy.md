@@ -459,9 +459,11 @@ a future spec version can migrate.
 - `files`: array of `{ name, table, byte_size, blake3, content_hash, row_count, row_groups }`
 - `producer`: optional `{ identity, scheme, signature }`, `scheme` in
   `{"ethereum-secp256k1","ed25519"}`, signature over the manifest hash
-- `prev_relic_manifest_hash` (hex32; all-zero for the genesis relic)
+- `prev_relic_manifest_hash` (hex32; all-zero for the genesis relic and for a detached start)
 - `pact_root` (hex32; §8.4)
 - `hash_algo` (string, `"blake3"`)
+- `detached_pact_start` (bool, optional; §8.4.1). Omitted when false, so a manifest sealed
+  without it hashes exactly as before. Invalid on the genesis relic.
 
 Each v1 data-table `name` MUST be exactly `<table>.parquet` from §6, not an arbitrary path. There
 is one file per table and duplicate names are invalid. This also prevents a local cleaner from
@@ -500,13 +502,36 @@ Different Parquet bytes or producer metadata change the manifest and pact even w
 table contents agree. Cross-producer conformance compares `content_hash` for matching chain,
 schema version, relic range and table (§11.1); it does not require matching pact roots.
 
+### 8.4.1 Detached pact starts
+
+A relic after genesis MAY be sealed without a predecessor only if its manifest declares
+`detached_pact_start: true`. It is then hashed as the genesis relic is: `prev_relic_manifest_hash`
+is all-zero and `pact_root = manifest_hash`. Later relics extend it normally, forming a **pact
+segment** anchored at that relic rather than at genesis.
+
+The flag is inside the manifest hash, so it cannot be added or stripped without changing the pact
+root. It is valid only on the first relic of a run verified without a predecessor; a manifest that
+declares it and is offered a predecessor, or that appears after the first relic of a run, fails
+verification. This stops a mirror from cutting a chain and presenting its tail as a fresh segment.
+
+A detached segment is internally consistent and nothing more. Its link to genesis is **not
+established**, and cleaning reports it as `pact_anchor: not checked`. Two mirrors comparing the
+same segment compare pact roots exactly as in §8.4.
+
+Joining a segment to the chain below it means re-sealing its first relic with the real predecessor
+and the flag absent. That changes the first manifest hash and every pact root above it; it does not
+change any table `content_hash`, so cross-producer agreement (§11.1) survives the join. The
+detached manifest is superseded, never edited (§12.5).
+
 ### 8.5 Registry document
 
 A per-chain `registry.json` (JCS) lists: `chain_id`, `spec_version`, `head_pact_root`, `head_block`,
 an array of relics `{ index, block_range, manifest_url, pact_root }`, and a `mirrors` array
 `{ name, base_url, transport }` with `transport` in `{"https","s3","torrent"}`. A new mirror
 bootstraps by fetching the registry, then for each relic fetching the manifest, verifying file
-BLAKE3 hashes and the pact chain, and cleaning (§10).
+BLAKE3 hashes and the pact chain, and cleaning (§10). When the first listed relic declares
+`detached_pact_start`, `head_pact_root` is the head of that segment, the relics below it are not
+part of the registry, and a mirror reports the anchor as not established (§8.4.1).
 
 ### 8.6 Example manifest
 

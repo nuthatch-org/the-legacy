@@ -108,6 +108,10 @@ pub struct Manifest {
     pub prev_relic_manifest_hash: Hash32,
     pub pact_root: Hash32,
     pub hash_algo: String,
+    /// Declares that this relic starts a pact segment with no sealed predecessor (§8.4.1). Absent
+    /// when false, so manifests sealed before the field existed hash exactly as they did.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub detached_pact_start: bool,
 }
 
 impl Manifest {
@@ -127,6 +131,7 @@ impl Manifest {
             prev_relic_manifest_hash: Hash32::ZERO,
             pact_root: Hash32::ZERO,
             hash_algo: HASH_ALGO.to_string(),
+            detached_pact_start: false,
         }
     }
 
@@ -187,6 +192,11 @@ impl Manifest {
         }
         if self.files.is_empty() {
             return bad("a relic with no files is not a relic".into());
+        }
+        if self.detached_pact_start && self.relic_index() == 0 {
+            return bad(
+                "the genesis relic is anchored by definition and cannot be detached".into(),
+            );
         }
 
         for file in &self.files {
