@@ -11,7 +11,12 @@ yanked = "deny"
 # Unmaintained matters when a workspace member depends on one directly; a deep transitive
 # proc-macro crate going quiet is noise, not a release gate.
 unmaintained = "workspace"
-ignore = []
+ignore = [
+  # crypto-bigint 0.5 (via k256 0.13): constant-time operations may branch on secrets. The fix is
+  # 0.7.6 only. Here k256 recovers senders from public signatures on public chain data, and the
+  # one signing key lives in the test fixture; no secret reaches these paths.
+  "RUSTSEC-2026-0387",
+]
 
 [licenses]
 version = 2
@@ -27,6 +32,11 @@ allow = [
   "Zlib",
 ]
 confidence-threshold = 0.9
+# Mozilla's root certificate list, which ureq bundles for HTTPS to archive-RPC endpoints. A data
+# licence, permissive, and admitted for this crate alone rather than for the tree.
+exceptions = [
+  { allow = ["CDLA-Permissive-2.0"], crate = "webpki-roots" },
+]
 
 [bans]
 multiple-versions = "warn"

@@ -67,6 +67,8 @@ pub struct SealRequest {
     pub chain_id: u64,
     pub silo: String,
     pub predecessor: Option<PathBuf>,
+    /// Seal with `detached_pact_start` instead of a predecessor (RFC-0001 §8.4.1).
+    pub detached: bool,
 }
 
 #[derive(Debug)]
@@ -120,9 +122,10 @@ pub fn seal(request: &SealRequest) -> Result<Sealed, Error> {
     let predecessor = match &request.predecessor {
         Some(path) => Some(load_manifest(path)?),
         None if index == 0 => None,
+        None if request.detached => None,
         None => {
             return Err(Error::Message(format!(
-                "relic {index} is not the genesis relic; pass --after with the predecessor manifest"
+                "relic {index} is not the genesis relic; pass --after with the predecessor manifest, or --detached"
             )))
         }
     };
@@ -179,6 +182,7 @@ pub fn seal(request: &SealRequest) -> Result<Sealed, Error> {
     }
 
     let mut manifest = Manifest::new(request.chain_id, &request.silo, index, boundary);
+    manifest.detached_pact_start = request.detached && predecessor.is_none() && index != 0;
     manifest.era1_accumulator_root = Some(Hash32::new(parsed.accumulator));
     manifest.files = vec![header_entry, tx_entry, receipt_entry, log_entry];
     let pact_root = pact::seal_chain(predecessor.as_ref(), std::slice::from_mut(&mut manifest))?;
@@ -422,14 +426,14 @@ fn decompress(framed: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(out)
 }
 
-fn load_manifest(path: &Path) -> Result<Manifest, Error> {
+pub(crate) fn load_manifest(path: &Path) -> Result<Manifest, Error> {
     let text = std::fs::read_to_string(path)
         .map_err(|error| Error::Message(format!("reading {}: {error}", path.display())))?;
     serde_json::from_str(&text)
         .map_err(|error| Error::Message(format!("parsing {}: {error}", path.display())))
 }
 
-fn prepare_output(dir: &Path) -> Result<(), Error> {
+pub(crate) fn prepare_output(dir: &Path) -> Result<(), Error> {
     if dir.exists() {
         if !dir.is_dir() {
             return Err(Error::Message(format!(
@@ -598,6 +602,7 @@ mod tests {
             chain_id: 1,
             silo: "ethereum".into(),
             predecessor: None,
+            detached: false,
         })
         .unwrap_err();
         let Error::Message(text) = error else {
@@ -659,6 +664,7 @@ mod tests {
             chain_id: 1,
             silo: "ethereum".into(),
             predecessor: None,
+            detached: false,
         })
         .unwrap();
         assert_eq!(sealed.relic_index, 0);

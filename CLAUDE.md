@@ -11,7 +11,8 @@ implementation-linked amendments, not already supported interfaces.
    before changing either. A spec change and the code change that follows it belong in the same PR.
 2. **Never overstate verification.** Every report, log line, doc and README row must say what was
    actually checked and what was not. `solo clean` currently checks manifest structure, relic
-   linkage and the pact chain by default. `--files` adds local byte integrity, Parquet counts and
+   linkage and the pact chain by default, and reports a run anchored at a declared
+   `detached_pact_start` (RFC-0001 §8.4.1) as having no established link to genesis. `--files` adds local byte integrity, Parquet counts and
    decoded checks for all five core tables, including header coverage and stored links. It
    reconstructs Ethereum header hashes through Prague for chain ID 1 only and checks transaction,
    receipt and log references plus receipt/header blooms where the required tables exist. Chain
@@ -49,7 +50,10 @@ implementation-linked amendments, not already supported interfaces.
   manifest-bound files before yielding core-table rows; object storage and indexed queries remain
   to be built.
 - `crates/shadow` - the six ingestion sources (§11). era1 seals one aligned 8192-block file
-  into headers, transactions, receipts and logs. The other five sources are still skeleton.
+  into headers, transactions, receipts and logs. The archive-RPC source (RFC-0004 §7) journals
+  validated `eth_getBlockByNumber` + `eth_getBlockReceipts` responses under a request budget,
+  resumes from the journal, rebuilds envelopes for types 0..=4 and seals all five tables. It is
+  tested against local fixtures only; no real endpoint has been run. The other four are skeleton.
 - `crates/solo` - serving (§13) and cleaning (§10). `solo serve` is sealed-only JSON-RPC over a
   local corpus: no upstream and no object storage. Log address and topic bitmaps are rebuilt in
   memory from the admitted files, as are transaction-hash and block-hash indexes. None of

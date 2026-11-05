@@ -1,8 +1,9 @@
-//! Ethereum execution objects carried by an era1 file.
+//! Ethereum execution objects as consensus RLP, shared by the era1 and RPC sources.
 //!
-//! Era1 stores canonical header, body and receipt RLP. `from`, `gas_used`, `contract_address`
-//! and `effective_gas_price` are not in those bytes; they are filled here so the row schema can
-//! hold them. `solo clean` does not check sender recovery, fees or contract addresses.
+//! Era1 stores canonical header, body and receipt RLP; the RPC source rebuilds the same bytes from
+//! JSON fields. `from`, `gas_used`, `contract_address` and `effective_gas_price` are not in those
+//! bytes; they are filled here so the row schema can hold them. `solo clean` does not check sender
+//! recovery, fees or contract addresses.
 
 use alloy_rlp::Encodable;
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
@@ -15,21 +16,21 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum DecodeError {
-    #[error("era1 RLP: {0}")]
+    #[error("RLP: {0}")]
     Rlp(String),
-    #[error("era1 header: {0}")]
+    #[error("header: {0}")]
     Header(String),
-    #[error("era1 body: {0}")]
+    #[error("body: {0}")]
     Body(String),
-    #[error("era1 transaction {index} in block {block}: {reason}")]
+    #[error("transaction {index} in block {block}: {reason}")]
     Transaction {
         block: u64,
         index: u32,
         reason: String,
     },
-    #[error("era1 receipts in block {block}: {reason}")]
+    #[error("receipts in block {block}: {reason}")]
     Receipts { block: u64, reason: String },
-    #[error("era1 signature: {0}")]
+    #[error("signature: {0}")]
     Signature(String),
 }
 
@@ -56,6 +57,16 @@ pub fn decode_block(
             "block {block_number} ommers hash does not match the uncle list"
         )));
     }
+    decode_payload(header, &tx_items, receipts_rlp)
+}
+
+/// Decode a block's transactions and receipts against an already-authenticated header.
+pub fn decode_payload(
+    header: HeaderRow,
+    tx_items: &[&[u8]],
+    receipts_rlp: &[u8],
+) -> Result<DecodedBlock, DecodeError> {
+    let block_number = header.block_number;
     let mut transactions = Vec::with_capacity(tx_items.len());
     for (index, item) in tx_items.iter().enumerate() {
         let index =
@@ -160,7 +171,7 @@ fn decode_body(bytes: &[u8]) -> Result<(Vec<&[u8]>, Vec<u8>), DecodeError> {
     Ok((transactions, items[1].to_vec()))
 }
 
-fn decode_transaction(
+pub fn decode_transaction(
     item: &[u8],
     block_number: u64,
     index: u32,
@@ -169,7 +180,9 @@ fn decode_transaction(
     if raw.is_empty() {
         return Err(DecodeError::Rlp("empty transaction".into()));
     }
-    let (tx_type, fields) = if is_list(raw)? {
+    // EIP-2718: a legacy transaction is an RLP list (first byte >= 0xc0); anything lower is a
+    // type byte. Asking `is_list` of a typed envelope misreads the type byte as a 1-byte string.
+    let (tx_type, fields) = if raw[0] >= 0xc0 {
         (0u8, list_items(raw)?)
     } else {
         let fields = list_items(&raw[1..])?;
@@ -179,11 +192,13 @@ fn decode_transaction(
         0 => legacy_transaction(raw, &fields, block_number, index)?,
         1 => typed_transaction(raw, 1, &fields, block_number, index)?,
         2 => typed_transaction(raw, 2, &fields, block_number, index)?,
+        3 => typed_transaction(raw, 3, &fields, block_number, index)?,
+        4 => typed_transaction(raw, 4, &fields, block_number, index)?,
         other => {
             return Err(DecodeError::Transaction {
                 block: block_number,
                 index,
-                reason: format!("type {other} is not in the era1 profile"),
+                reason: format!("type {other} is not a chain ID 1 transaction type"),
             })
         }
     };
@@ -255,23 +270,69 @@ fn typed_transaction(
     block_number: u64,
     index: u32,
 ) -> Result<TransactionRow, DecodeError> {
-    let (nonce_i, price_i, fee_i, gas_i, to_i, value_i, data_i, access_i, sig_at) = if tx_type == 1
-    {
-        if fields.len() != 11 {
-            return Err(DecodeError::Rlp(format!(
-                "type 1 transaction has {} fields",
-                fields.len()
-            )));
-        }
-        (1, Some(2), None, 3, 4, 5, 6, 7, 8)
-    } else if fields.len() != 12 {
+    // Field positions after chain_id and nonce, per EIP-2930, 1559, 4844 and 7702.
+    struct Layout {
+        len: usize,
+        gas_price: Option<usize>,
+        fees: Option<(usize, usize)>,
+        gas: usize,
+        blob_fee: Option<usize>,
+        blob_hashes: Option<usize>,
+        authorizations: Option<usize>,
+        signature: usize,
+    }
+    let layout = match tx_type {
+        1 => Layout {
+            len: 11,
+            gas_price: Some(2),
+            fees: None,
+            gas: 3,
+            blob_fee: None,
+            blob_hashes: None,
+            authorizations: None,
+            signature: 8,
+        },
+        2 => Layout {
+            len: 12,
+            gas_price: None,
+            fees: Some((2, 3)),
+            gas: 4,
+            blob_fee: None,
+            blob_hashes: None,
+            authorizations: None,
+            signature: 9,
+        },
+        3 => Layout {
+            len: 14,
+            gas_price: None,
+            fees: Some((2, 3)),
+            gas: 4,
+            blob_fee: Some(9),
+            blob_hashes: Some(10),
+            authorizations: None,
+            signature: 11,
+        },
+        4 => Layout {
+            len: 13,
+            gas_price: None,
+            fees: Some((2, 3)),
+            gas: 4,
+            blob_fee: None,
+            blob_hashes: None,
+            authorizations: Some(9),
+            signature: 10,
+        },
+        other => return Err(DecodeError::Rlp(format!("type {other} has no layout"))),
+    };
+    if fields.len() != layout.len {
         return Err(DecodeError::Rlp(format!(
-            "type 2 transaction has {} fields",
+            "type {tx_type} transaction has {} fields",
             fields.len()
         )));
-    } else {
-        (1, None, Some((2, 3)), 4, 5, 6, 7, 8, 9)
-    };
+    }
+    let to_i = layout.gas + 1;
+    let (value_i, data_i, access_i) = (to_i + 1, to_i + 2, to_i + 3);
+    let sig_at = layout.signature;
     let parity = {
         let value = uint_u64(fields[sig_at])?;
         if value > 1 {
@@ -281,6 +342,12 @@ fn typed_transaction(
         }
         value as u8
     };
+    let to = address(fields[to_i])?;
+    if tx_type >= 3 && to.is_none() {
+        return Err(DecodeError::Rlp(format!(
+            "type {tx_type} transaction cannot create a contract"
+        )));
+    }
     let r = scalar(fields[sig_at + 1])?;
     let s = scalar(fields[sig_at + 2])?;
     let mut preimage = vec![tx_type];
@@ -291,21 +358,34 @@ fn typed_transaction(
         transaction_index: index,
         transaction_hash: keccak(raw),
         tx_type,
-        nonce: uint_u64(fields[nonce_i])?,
+        nonce: uint_u64(fields[1])?,
         from,
-        to: address(fields[to_i])?,
+        to,
         value: uint_bytes(fields[value_i])?,
-        gas_limit: uint_u64(fields[gas_i])?,
-        gas_price: price_i.map(|i| uint_bytes(fields[i])).transpose()?,
-        max_priority_fee_per_gas: fee_i
+        gas_limit: uint_u64(fields[layout.gas])?,
+        gas_price: layout
+            .gas_price
+            .map(|i| uint_bytes(fields[i]))
+            .transpose()?,
+        max_priority_fee_per_gas: layout
+            .fees
             .map(|(priority, _)| uint_bytes(fields[priority]))
             .transpose()?,
-        max_fee_per_gas: fee_i.map(|(_, fee)| uint_bytes(fields[fee])).transpose()?,
-        max_fee_per_blob_gas: None,
+        max_fee_per_gas: layout
+            .fees
+            .map(|(_, fee)| uint_bytes(fields[fee]))
+            .transpose()?,
+        max_fee_per_blob_gas: layout.blob_fee.map(|i| uint_bytes(fields[i])).transpose()?,
         input: string_payload(fields[data_i])?.to_vec(),
         access_list: Some(require_list(fields[access_i])?.to_vec()),
-        blob_versioned_hashes: None,
-        authorization_list: None,
+        blob_versioned_hashes: layout
+            .blob_hashes
+            .map(|i| require_list(fields[i]).map(<[u8]>::to_vec))
+            .transpose()?,
+        authorization_list: layout
+            .authorizations
+            .map(|i| require_list(fields[i]).map(<[u8]>::to_vec))
+            .transpose()?,
         v_or_y_parity: Some(parity),
         r: Some(r),
         s: Some(s),
@@ -504,24 +584,24 @@ fn effective_gas_price(
 ) -> Result<Option<Vec<u8>>, DecodeError> {
     match tx.tx_type {
         0 | 1 => Ok(tx.gas_price.clone()),
-        2 => {
+        2..=4 => {
             let base = base_fee.ok_or_else(|| DecodeError::Receipts {
                 block: tx.block_number,
-                reason: "type 2 receipt without a header base fee".into(),
+                reason: format!("type {} receipt without a header base fee", tx.tx_type),
             })?;
             let tip =
                 tx.max_priority_fee_per_gas
                     .as_deref()
                     .ok_or_else(|| DecodeError::Receipts {
                         block: tx.block_number,
-                        reason: "type 2 transaction has no priority fee".into(),
+                        reason: "typed fee transaction has no priority fee".into(),
                     })?;
             let max = tx
                 .max_fee_per_gas
                 .as_deref()
                 .ok_or_else(|| DecodeError::Receipts {
                     block: tx.block_number,
-                    reason: "type 2 transaction has no max fee".into(),
+                    reason: "typed fee transaction has no max fee".into(),
                 })?;
             let with_tip = be_add(base, tip).map_err(|_| DecodeError::Receipts {
                 block: tx.block_number,
@@ -617,7 +697,7 @@ fn recover(
     Ok(address)
 }
 
-fn transaction_envelope(item: &[u8]) -> Result<&[u8], DecodeError> {
+pub(crate) fn transaction_envelope(item: &[u8]) -> Result<&[u8], DecodeError> {
     if is_list(item)? {
         Ok(item)
     } else {
@@ -721,7 +801,7 @@ fn scalar(item: &[u8]) -> Result<[u8; 32], DecodeError> {
     Ok(out)
 }
 
-fn keccak(bytes: &[u8]) -> [u8; 32] {
+pub(crate) fn keccak(bytes: &[u8]) -> [u8; 32] {
     Keccak256::digest(bytes).into()
 }
 

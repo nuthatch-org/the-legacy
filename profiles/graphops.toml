@@ -1,0 +1,19 @@
+# GraphOps RPC, Ethereum mainnet. The endpoint is https://rpc.graphops.xyz/v1/evm/1 with the key
+# sent as a Bearer token (SHADOW_RPC_BEARER). Limits are a starting guess until the first probe run.
+[provider]
+alias = "graphops"
+chain_id = 1
+
+[methods]
+get_block_by_number = true
+get_block_receipts = true
+batch_max = 0
+
+[limits]
+requests_per_second = 20
+concurrency = 8
+
+[billing]
+unit = "credit"
+# A flat 20 credits per call, as measured on the org's usage page in October 2026.
+cu_per_method = 20
