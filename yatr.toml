@@ -24,23 +24,24 @@ sources = ["crates/**/*.rs"]
 [tasks.lint]
 desc = "Clippy with warnings denied"
 run = ["cargo clippy --all-targets -- -D warnings"]
-sources = ["crates/**/*.rs", "Cargo.toml", "Cargo.lock"]
+sources = ["crates/**", "Cargo.toml", "Cargo.lock"]
 
 [tasks.test]
 desc = "Run the test suite"
 run = ["cargo test"]
-sources = ["crates/**/*.rs", "Cargo.toml", "Cargo.lock"]
+sources = ["crates/**", "Cargo.toml", "Cargo.lock"]
 watch = ["crates/**/*.rs"]
 
 [tasks.deny]
 desc = "cargo-deny: licences, bans, advisories, sources"
 run = ["cargo deny check"]
-sources = ["deny.toml", "Cargo.lock"]
+# Advisories arrive without Cargo.lock changing, so a cached pass would hide them.
+no_cache = true
 
 [tasks.build]
 desc = "Build the release binaries"
 run = ["cargo build --release"]
-sources = ["crates/**/*.rs", "Cargo.toml", "Cargo.lock"]
+sources = ["crates/**", "Cargo.toml", "Cargo.lock"]
 outputs = ["target/release/solo", "target/release/shadow"]
 
 [tasks.doc]
